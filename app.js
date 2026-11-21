@@ -98,11 +98,12 @@
   var KINDS = { solde_initial: "Solde de départ", cotisation: "Cotisation", entree: "Autre entrée", sortie: "Dépense", tour: "Tour versé", aide: "Aide / soutien", annulation: "Annulation" };
   var METHODS = { wave: "Wave", orange_money: "Orange Money", especes: "Espèces", autre: "Autre" };
   var STATES = {
-    essai: ["b-warn", "Essai gratuit"], actif: ["b-ok", "Actif"], lecture_seule: ["b-bad", "Lecture seule"], suspendu: ["b-bad", "Suspendu"]
+    preparation: ["b-grey", "En préparation"], essai: ["b-warn", "Essai gratuit"], actif: ["b-ok", "Actif"], lecture_seule: ["b-bad", "Lecture seule"], suspendu: ["b-bad", "Suspendu"]
   };
   function stateBadge(s) { var x = STATES[s] || ["b-grey", s || "—"]; return '<span class="badge ' + x[0] + '">' + esc(x[1]) + "</span>"; }
   function gState(g) {
     if (g.is_suspended) return "suspendu";
+    if (!g.launched_at) return "preparation";
     if (g.paid_until && new Date(g.paid_until) > new Date()) return "actif";
     if (new Date(g.trial_ends_at) > new Date()) return "essai";
     return "lecture_seule";
@@ -141,19 +142,24 @@
   /* ---------------- Navigation ---------------- */
   function setTopnav(route) {
     if (!S.session) {
-      topnav.innerHTML = '<a href="#/connexion" class="' + (route === "connexion" ? "on" : "") + '">Connexion</a><a href="#/inscription" class="hide-m ' + (route === "inscription" ? "on" : "") + '">Créer un compte</a>';
+      topnav.innerHTML = '<a href="#/aide" class="hide-m ' + (route === "aide" ? "on" : "") + '">Aide</a><a href="#/connexion" class="' + (route === "connexion" ? "on" : "") + '">Connexion</a><a href="#/inscription" class="hide-m ' + (route === "inscription" ? "on" : "") + '">Créer un compte</a>';
       return;
     }
     var h = '<a href="#/" class="hide-m ' + (route === "home" ? "on" : "") + '">Mes groupes</a>';
     if (S.owner) h += '<a href="#/console" class="' + (route === "console" ? "on" : "") + '">Console</a>';
+    h += '<a href="#/aide" class="hide-m ' + (route === "aide" ? "on" : "") + '">Aide</a>';
     h += '<a href="#/profil" class="' + (route === "profil" ? "on" : "") + '" aria-label="Mon compte">' + esc(S.me ? S.me.first_name : "Compte") + "</a>";
     topnav.innerHTML = h;
   }
   function setBottom(gid, sub, g) {
     if (!gid) { bottomnav.classList.remove("show"); bottomnav.innerHTML = ""; return; }
     var bureau = g && ["proprietaire", "president", "tresorier", "secretaire"].indexOf(g.role) >= 0;
-    var items = [["accueil", "Accueil", ICON.home], ["payer", "Payer", ICON.pay], ["caisse", "Caisse", ICON.cash], ["membres", "Membres", ICON.people], ["annonces", "Annonces", ICON.bell]];
-    if (bureau) items.push(["bureau", "Bureau", ICON.shield]);
+    var items;
+    if (g && g.state === "preparation") items = [["lancement", "Préparation", ICON.home], ["membres", "Membres", ICON.people], ["caisse", "Caisse", ICON.cash], ["reglages", "Réglages", ICON.gear]];
+    else {
+      items = [["accueil", "Accueil", ICON.home], ["payer", "Payer", ICON.pay], ["caisse", "Caisse", ICON.cash], ["membres", "Membres", ICON.people], ["annonces", "Annonces", ICON.bell]];
+      if (bureau) items.push(["bureau", "Bureau", ICON.shield]);
+    }
     bottomnav.innerHTML = items.map(function (it) {
       var badge = "";
       if (it[0] === "bureau" && g && g.todo > 0) badge = '<span class="nb">' + (g.todo > 99 ? "99+" : g.todo) + "</span>";
@@ -168,6 +174,9 @@
     var r = parts[0] || "";
     window.scrollTo(0, 0);
 
+    if (r === "invitation" && parts[1]) { setBottom(null); setTopnav(""); return viewInvite(parts[1].replace(/[^A-Za-z0-9_=-]/g, "").slice(0, 80)); }
+    if (r === "reinitialiser" && parts[1]) { setBottom(null); setTopnav(""); return viewReset(parts[1].replace(/[^A-Za-z0-9_=-]/g, "").slice(0, 80)); }
+    if (r === "aide") { setBottom(null); setTopnav("aide"); return viewHelp(); }
     if (r === "rejoindre" && parts[1]) {
       var code = parts[1].toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 8);
       try { localStorage.setItem("mb_join", code); } catch (e) { /* stockage indisponible */ }
@@ -217,8 +226,8 @@
       types.map(function (t) { var x = typeOf(t); return '<div class="tcard"><div class="tico" style="background:' + x.color + ";box-shadow:0 4px 0 " + x.lip + '">' + ICON.people + "</div><b>" + esc(x.label) + "</b></div>"; }).join("") +
       "</div></section>" +
       '<section class="grid2">' +
-      '<div class="card stack"><h3>1. Crée ton groupe</h3><p class="muted" style="margin:0">Choisis le type, le montant de la cotisation et ton numéro Wave. Un code d\'invitation est créé.</p></div>' +
-      '<div class="card stack"><h3>2. Invite les membres</h3><p class="muted" style="margin:0">Partage le lien sur WhatsApp. Le bureau accepte chaque demande.</p></div>' +
+      '<div class="card stack"><h3>1. Le responsable prépare le groupe</h3><p class="muted" style="margin:0">Type, cotisation, numéros de paiement, bureau et liste des membres, guidé étape par étape.</p></div>' +
+      '<div class="card stack"><h3>2. Chaque membre reçoit son lien personnel</h3><p class="muted" style="margin:0">Par WhatsApp. Son nom est déjà rempli : il choisit son mot de passe et il est dedans. Les membres sans smartphone sont suivis quand même.</p></div>' +
       '<div class="card stack"><h3>3. Chacun paie et envoie sa capture</h3><p class="muted" style="margin:0">Le trésorier vérifie et valide : la caisse se met à jour pour tout le monde.</p></div>' +
       '<div class="card stack"><h3>4. Tout reste écrit</h3><p class="muted" style="margin:0">Une erreur se corrige par une annulation visible, jamais par un effacement.</p></div>' +
       "</section>" +
@@ -233,7 +242,7 @@
       pwField("l-pass", "Mot de passe", "current-password") +
       '<div id="l-msg"></div><button class="btn btn-gold btn-block" type="submit">Se connecter</button></form>' +
       '<p class="center small muted" style="margin:0">Pas encore de compte ? <a href="#/inscription">Créer un compte</a></p>' +
-      '<p class="center small muted" style="margin:0">Mot de passe oublié ? Contacte l\'assistance' + supportLink() + ".</p></div>";
+      '<p class="center small muted" style="margin:0">Mot de passe oublié ? Demande à ton président un lien pour en choisir un nouveau, ou contacte l\'assistance' + supportLink() + ".</p></div>";
   }
   function supportLink() {
     var w = S.settings.support_whatsapp;
@@ -243,6 +252,7 @@
   function viewSignup() {
     var pend = null; try { pend = localStorage.getItem("mb_join"); } catch (e) { pend = null; }
     app.innerHTML = '<div class="card stack" style="max-width:500px;margin:10px auto"><h1>Créer mon compte</h1>' +
+      (pend ? "" : '<div class="msg info">Ton groupe t\'a envoyé un <b>lien personnel</b> sur WhatsApp ? Ouvre plutôt ce lien : ton nom y est déjà rempli.</div>') +
       (pend ? '<div class="msg info">Après ton inscription, ta demande pour rejoindre le groupe sera envoyée automatiquement.</div>' : "") +
       '<form id="f-signup" class="stack" novalidate>' +
       '<div class="grid2" style="gap:12px"><div class="field"><label for="s-first">Prénom</label><input id="s-first" type="text" autocomplete="given-name" maxlength="60" required></div>' +
@@ -266,38 +276,160 @@
     var waiting = rows.filter(function (g) { return g.status === "en_attente"; });
     var cards = active.map(function (g) {
       var t = typeOf(g.type);
-      return '<a class="gcard" href="#/g/' + esc(g.group_id) + '" style="background:linear-gradient(150deg,' + t.color + "," + t.lip + ");box-shadow:0 8px 0 " + t.lip + ',0 16px 28px rgba(16,35,28,.14)">' +
-        '<div class="gtop"><span class="badge b-white">' + esc(t.label) + "</span>" + (Number(g.pending_proofs) > 0 ? '<span class="badge" style="background:#fff;color:' + t.lip + '">' + esc(g.pending_proofs) + " à valider</span>" : "") + "</div>" +
+      var prep = g.state === "preparation";
+      return '<a class="gcard" href="#/g/' + esc(g.group_id) + (prep ? "/lancement" : "") + '" style="background:linear-gradient(150deg,' + t.color + "," + t.lip + ");box-shadow:0 8px 0 " + t.lip + ',0 16px 28px rgba(16,35,28,.14)">' +
+        '<div class="gtop"><span class="badge b-white">' + esc(t.label) + "</span>" + (Number(g.pending_proofs) > 0 ? '<span class="badge" style="background:#fff;color:' + t.lip + '">' + esc(g.pending_proofs) + " à valider</span>" : "") +
+        (prep ? '<span class="badge" style="background:var(--gold);color:var(--navy)">En préparation</span>' : "") + "</div>" +
         '<div class="gname">' + esc(g.name) + "</div>" +
-        '<div class="gmeta"><span>Solde : <b>' + fcfa(g.balance) + "</b></span><span>" + esc(g.members) + " membres · " + esc(ROLES[g.role] || g.role) + "</span></div>" +
-        (g.state !== "actif" ? '<div class="gmeta"><span>' + esc((STATES[g.state] || ["", g.state])[1]) + "</span></div>" : "") +
+        (prep ? '<div class="gmeta"><span>' + esc(g.members) + " membre(s) inscrit(s)</span><span><b>Continuer la préparation →</b></span></div>" :
+          '<div class="gmeta"><span>Solde : <b>' + fcfa(g.balance) + "</b></span><span>" + esc(g.members) + " membres · " + esc(ROLES[g.role] || g.role) + "</span></div>" +
+          (g.state !== "actif" ? '<div class="gmeta"><span>' + esc((STATES[g.state] || ["", g.state])[1]) + "</span></div>" : "")) +
         "</a>";
     }).join("");
     var wait = waiting.map(function (g) {
       return '<div class="item"><div class="grow"><b>' + esc(g.name) + '</b><span class="small muted">Demande envoyée, en attente du bureau</span></div><span class="badge b-warn">En attente</span></div>';
     }).join("");
+    if (!active.length) {
+      app.innerHTML = '<div class="stack" style="max-width:640px;margin:0 auto">' +
+        '<div><p class="muted" style="margin:0">Bienvenue ' + esc(S.me.first_name) + ",</p><h1>Ton espace Mbootaay</h1></div>" +
+        '<section class="hero-g stack"><h2 style="color:#fff">Tu attends une invitation ?</h2>' +
+        '<p style="margin:0;color:#E3F6EE">Le bureau de ta tontine, amicale ou dahira t\'envoie un <b>lien personnel</b> sur WhatsApp. Ouvre-le : tu entreras directement dans ton groupe.</p>' +
+        '<p style="margin:0;color:#CFEFE2" class="small">Tu n\'as rien reçu ? Demande au président ou au secrétaire de t\'ajouter avec ton numéro <b>' + esc(showPhone(S.me.phone)) + "</b>.</p></section>" +
+        (wait ? '<div class="card stack"><h3>Demandes en cours</h3><div class="list">' + wait + "</div></div>" : "") +
+        '<div class="card stack"><h3>On t\'a donné un code de groupe ?</h3><p class="small muted" style="margin:0">Certains groupes utilisent un code à 8 caractères.</p><a class="btn btn-light" href="#/rejoindre">Entrer un code</a></div>' +
+        '<div class="card stack" style="border:2px dashed var(--line);box-shadow:none"><h3>Tu es responsable d\'un groupe ?</h3><p class="small muted" style="margin:0">Président, trésorier ou organisateur : ouvre l\'espace de ton groupe et invite tes membres.</p><a class="btn btn-green" href="#/creer">Ouvrir l\'espace de mon groupe</a></div>' +
+        '<p class="center small"><a href="#/aide">Comment ça marche ?</a></p></div>';
+      return;
+    }
     app.innerHTML = '<div class="stack">' +
       '<div class="row" style="justify-content:space-between"><div><p class="muted" style="margin:0">Bonjour ' + esc(S.me.first_name) + ',</p><h1>Mes groupes</h1></div>' +
-      '<div class="row"><a class="btn btn-light btn-sm" href="#/rejoindre">Rejoindre</a><a class="btn btn-gold btn-sm" href="#/creer">' + ICON.plus + " Créer un groupe</a></div></div>" +
-      (cards ? '<div class="grid2">' + cards + "</div>" :
-        '<div class="card empty stack"><h3 style="color:var(--ink)">Aucun groupe pour l\'instant</h3><p style="margin:0">Crée le groupe de ta tontine, amicale ou dahira, ou rejoins-en un avec un code d\'invitation.</p><div class="row" style="justify-content:center"><a class="btn btn-gold" href="#/creer">Créer un groupe</a><a class="btn btn-light" href="#/rejoindre">J\'ai un code</a></div></div>') +
+      '<div class="row"><a class="btn btn-light btn-sm" href="#/rejoindre">J\'ai un code</a><a class="btn btn-light btn-sm" href="#/creer">' + ICON.plus + " Ouvrir un espace</a></div></div>" +
+      '<div class="grid2">' + cards + "</div>" +
       (wait ? '<div class="card stack"><h3>Demandes en cours</h3><div class="list">' + wait + "</div></div>" : "") +
       "</div>";
   }
 
+  /* Assistant « Ouvrir l'espace de mon groupe » (étapes 0 à 3 ; 4 et 5 dans la page de préparation) */
+  var W = null;
+  function wizardReset() { W = { step: 0, type: "tontine", name: "", amount: "", period: "mensuelle", wave: "", om: "", ok: false }; }
+  function steps(n) {
+    var labels = ["Le groupe", "La cotisation", "Les paiements", "Le bureau", "Les membres"];
+    return '<ol class="steps">' + labels.map(function (l, i) { return '<li class="' + (i + 1 < n ? "done" : i + 1 === n ? "on" : "") + '"><span>' + (i + 1 < n ? "✓" : i + 1) + "</span>" + l + "</li>"; }).join("") + "</ol>";
+  }
   function viewCreate() {
+    if (!W) wizardReset();
+    var body = "";
     var trial = Number(S.settings.trial_days || 15);
-    var types = Object.keys(TYPES).map(function (k, i) { return '<button type="button" data-act="pick" data-name="type" data-val="' + k + '" class="' + (i === 0 ? "on" : "") + '">' + esc(TYPES[k].label) + "</button>"; }).join("");
-    app.innerHTML = '<div class="stack" style="max-width:640px;margin:0 auto">' +
-      '<div class="pagehead"><a class="back" href="#/" aria-label="Retour">' + ICON.back + "</a><h1>Créer un groupe</h1></div>" +
-      '<form id="f-create" class="card stack" novalidate><input type="hidden" id="c-type" value="tontine">' +
-      '<div class="field"><label>Type de groupe</label><div class="choice" data-group="type">' + types + "</div></div>" +
-      '<div class="field"><label for="c-name">Nom du groupe</label><input id="c-name" type="text" maxlength="80" placeholder="Ex. Tontine des femmes de Pikine" required></div>' +
-      '<div class="grid2" style="gap:12px"><div class="field"><label for="c-amount">Cotisation (F CFA)</label><input id="c-amount" type="number" inputmode="numeric" min="100" step="100" placeholder="10000"><small>Laisse vide si le montant est libre.</small></div>' +
-      '<div class="field"><label for="c-period">Fréquence</label><select id="c-period">' + Object.keys(PERIODS).map(function (k) { return '<option value="' + k + '"' + (k === "mensuelle" ? " selected" : "") + ">" + esc(PERIODS[k]) + "</option>"; }).join("") + "</select></div></div>" +
-      '<div class="field"><label for="c-wave">Numéro Wave du groupe (facultatif)</label><input id="c-wave" type="tel" inputmode="numeric" placeholder="77 123 45 67"><small>Les membres paieront sur ce numéro. Tout changement sera annoncé à tous.</small></div>' +
-      '<div class="msg info">' + trial + " jours d'essai gratuit commencent dès la création.</div>" +
-      '<div id="c-msg"></div><button class="btn btn-gold btn-block" type="submit">Créer le groupe</button></form></div>';
+    if (W.step === 0) {
+      body = '<div class="card stack"><h2>Ouvrir l\'espace de ton groupe</h2>' +
+        '<p class="muted" style="margin:0">Cet espace est réservé au <b>responsable</b> du groupe (président, trésorier ou organisateur).</p>' +
+        '<div class="list"><div class="item"><div class="avatar">1</div><div class="grow"><b>Tu deviens propriétaire de l\'espace</b><span class="small muted">Tu nommes le bureau, tu ajoutes les membres et tu es responsable de la caisse.</span></div></div>' +
+        '<div class="item"><div class="avatar">2</div><div class="grow"><b>' + trial + ' jours gratuits après le lancement</b><span class="small muted">Ensuite, le groupe choisit une formule. Les membres ne paient rien à Mbootaay.</span></div></div>' +
+        '<div class="item"><div class="avatar" style="background:var(--gold);color:var(--navy)">!</div><div class="grow"><b>Tu veux seulement rejoindre ton groupe ?</b><span class="small muted">N\'ouvre pas d\'espace : demande ton lien personnel au bureau de ton groupe.</span></div></div></div>' +
+        '<label class="row" style="gap:10px;font-weight:700"><input id="w-ok" type="checkbox" style="width:24px;height:24px"' + (W.ok ? " checked" : "") + "> Je suis responsable de ce groupe</label>" +
+        '<div id="w-msg"></div><div class="row"><a class="btn btn-light" href="#/">Annuler</a><button class="btn btn-gold" data-act="wiz-next">Commencer</button></div></div>';
+    } else if (W.step === 1) {
+      body = steps(1) + '<div class="card stack"><div class="field"><label>Type de groupe</label><div class="choice" data-group="type">' +
+        Object.keys(TYPES).map(function (k) { return '<button type="button" data-act="pick" data-name="type" data-val="' + k + '" class="' + (W.type === k ? "on" : "") + '">' + esc(TYPES[k].label) + "</button>"; }).join("") +
+        '</div><input type="hidden" id="c-type" value="' + esc(W.type) + '"></div>' +
+        '<div class="field"><label for="w-name">Nom du groupe</label><input id="w-name" type="text" maxlength="80" placeholder="Ex. Tontine des femmes de Pikine" value="' + esc(W.name) + '"></div>' +
+        '<div id="w-msg"></div><div class="row"><button class="btn btn-light" data-act="wiz-back">Retour</button><button class="btn btn-gold" data-act="wiz-next">Continuer</button></div></div>';
+    } else if (W.step === 2) {
+      body = steps(2) + '<div class="card stack"><div class="field"><label for="w-amount">Montant de la cotisation (F CFA)</label><input id="w-amount" type="number" inputmode="numeric" min="100" step="100" placeholder="10000" value="' + esc(W.amount) + '"><small>Laisse vide si chacun donne librement.</small></div>' +
+        '<div class="field"><label for="w-period">Fréquence</label><select id="w-period">' + Object.keys(PERIODS).map(function (k) { return '<option value="' + k + '"' + (k === W.period ? " selected" : "") + ">" + esc(PERIODS[k]) + "</option>"; }).join("") + "</select></div>" +
+        '<div id="w-msg"></div><div class="row"><button class="btn btn-light" data-act="wiz-back">Retour</button><button class="btn btn-gold" data-act="wiz-next">Continuer</button></div></div>';
+    } else {
+      body = steps(3) + '<div class="card stack"><p class="muted" style="margin:0">Sur quels numéros les membres paient-ils ? Tout changement sera annoncé automatiquement à tous les membres.</p>' +
+        '<div class="field"><label for="w-wave">Numéro Wave du groupe</label><input id="w-wave" type="tel" inputmode="numeric" placeholder="77 123 45 67" value="' + esc(W.wave) + '"></div>' +
+        '<div class="field"><label for="w-om">Numéro Orange Money (facultatif)</label><input id="w-om" type="tel" inputmode="numeric" placeholder="77 123 45 67" value="' + esc(W.om) + '"></div>' +
+        '<div class="msg info">Après cette étape, ton espace est créé <b>en préparation</b> : personne ne le voit encore. Tu ajoutes ensuite le bureau et les membres, puis tu lances le groupe.</div>' +
+        '<div id="w-msg"></div><div class="row"><button class="btn btn-light" data-act="wiz-back">Retour</button><button class="btn btn-gold" data-act="wiz-create">Créer l\'espace</button></div></div>';
+    }
+    app.innerHTML = '<div class="stack" style="max-width:640px;margin:0 auto"><div class="pagehead"><a class="back" href="#/" aria-label="Retour">' + ICON.back + "</a><h1>Ouvrir un espace</h1></div>" + body + "</div>";
+  }
+  function wizardRead() {
+    if (!W) return;
+    if (document.getElementById("w-name")) W.name = val("w-name");
+    if (document.getElementById("c-type")) W.type = val("c-type");
+    if (document.getElementById("w-amount")) W.amount = val("w-amount");
+    if (document.getElementById("w-period")) W.period = val("w-period");
+    if (document.getElementById("w-wave")) W.wave = val("w-wave");
+    if (document.getElementById("w-om")) W.om = val("w-om");
+    if (document.getElementById("w-ok")) W.ok = document.getElementById("w-ok").checked;
+  }
+  function wizardCheck() {
+    if (W.step === 0 && !W.ok) return "Coche « Je suis responsable de ce groupe » pour continuer.";
+    if (W.step === 1 && W.name.length < 3) return "Le nom du groupe doit contenir au moins 3 caractères.";
+    if (W.step === 2 && W.amount && !(Number(W.amount) >= 100)) return "La cotisation doit être d'au moins 100 F.";
+    if (W.step === 3) {
+      if (W.wave && !validPhone(W.wave)) return "Numéro Wave invalide.";
+      if (W.om && !validPhone(W.om)) return "Numéro Orange Money invalide.";
+    }
+    return "";
+  }
+
+  /* ---------------- Invitation personnelle ---------------- */
+  async function viewInvite(token) {
+    loading();
+    var p;
+    try { p = await rpc("invitation_preview", { p_token: token }); } catch (e) { app.innerHTML = '<div class="msg err">' + esc(errText(e)) + "</div>"; return; }
+    if (!p || !p.valid) {
+      var why = { utilisee: "Ce lien a déjà été utilisé.", expiree: "Ce lien a expiré (validité : 7 jours).", remplacee: "Un nouveau lien t'a été envoyé : utilise le plus récent." }[p && p.reason] || "Ce lien n'est pas valable.";
+      app.innerHTML = '<div class="card center stack" style="max-width:480px;margin:10px auto"><h2>Invitation indisponible</h2><p class="muted">' + esc(why) + " Demande un nouveau lien au bureau de ton groupe.</p>" +
+        (S.session ? '<a class="btn btn-light" href="#/">Mes groupes</a>' : '<a class="btn btn-light" href="#/connexion">Se connecter</a>') + "</div>";
+      return;
+    }
+    S.inv = { token: token, p: p };
+    var t = typeOf(p.group_type);
+    var top = '<section class="hero-g stack" style="background:linear-gradient(150deg,' + t.color + "," + t.lip + ");box-shadow:0 9px 0 " + t.lip + '"><span class="badge b-white">' + esc(t.label) + '</span><h1 style="color:#fff">' + esc(p.group_name) + '</h1><p style="margin:0;color:#fff">Tu es invité(e) comme <b>' + esc(p.first_name + " " + p.last_name) + "</b>.</p></section>";
+    var body;
+    if (S.session && S.me) {
+      var other = p.phone && digits(S.me.phone) !== p.phone;
+      body = '<div class="card stack">' + (other ? '<div class="msg info">Tu es connecté(e) avec le numéro <b>' + esc(showPhone(S.me.phone)) + "</b>, mais cette invitation est pour le <b>" + esc(showPhone(p.phone)) + "</b>. Si ce n'est pas toi, déconnecte-toi.</div>" : "") +
+        '<div id="i-msg"></div><button class="btn btn-gold btn-block" data-act="inv-accept">Rejoindre le groupe</button>' + (other ? '<button class="btn btn-light" data-act="logout">Se déconnecter</button>' : "") + "</div>";
+    } else if (p.has_account) {
+      body = '<form id="f-inv-login" class="card stack" novalidate><h3>Tu as déjà un compte Mbootaay</h3><p class="small muted" style="margin:0">Entre ton mot de passe pour rejoindre le groupe.</p>' +
+        '<div class="field"><label>Numéro</label><input type="tel" value="' + esc(showPhone(p.phone)) + '" readonly></div>' + pwField("i-pass", "Mot de passe", "current-password") +
+        '<div id="i-msg"></div><button class="btn btn-gold btn-block" type="submit">Rejoindre le groupe</button><p class="small muted center" style="margin:0">Mot de passe oublié ? Demande un lien à ton président.</p></form>';
+    } else {
+      body = '<form id="f-inv-signup" class="card stack" novalidate><h3>Crée ton accès</h3><p class="small muted" style="margin:0">Vérifie tes informations et choisis un mot de passe.</p>' +
+        '<div class="grid2" style="gap:12px"><div class="field"><label for="i-first">Prénom</label><input id="i-first" type="text" maxlength="60" value="' + esc(p.first_name) + '"></div>' +
+        '<div class="field"><label for="i-last">Nom</label><input id="i-last" type="text" maxlength="60" value="' + esc(p.last_name) + '"></div></div>' +
+        '<div class="field"><label for="i-phone">Numéro de téléphone</label><input id="i-phone" type="tel" inputmode="numeric" value="' + esc(p.phone ? showPhone(p.phone) : "") + '"' + (p.phone ? " readonly" : ' placeholder="77 123 45 67"') + "><small>Il te servira pour te connecter.</small></div>" +
+        pwField("i-pass", "Mot de passe (8 caractères minimum)", "new-password") + pwField("i-pass2", "Confirme le mot de passe", "new-password") +
+        '<div id="i-msg"></div><button class="btn btn-gold btn-block" type="submit">Rejoindre le groupe</button></form>';
+    }
+    app.innerHTML = '<div class="stack" style="max-width:520px;margin:0 auto">' + top + body + '<p class="center small muted">Ce lien est personnel : ne le transfère à personne.</p></div>';
+  }
+  async function acceptInvite() {
+    var gid = await rpc("accept_invitation", { p_token: S.inv.token });
+    S.inv = null; S.g = null;
+    toast("Bienvenue dans le groupe !", "ok");
+    location.hash = "#/g/" + gid;
+  }
+
+  /* ---------------- Nouveau mot de passe par lien ---------------- */
+  async function viewReset(token) {
+    loading();
+    var p;
+    try { p = await rpc("reset_preview", { p_token: token }); } catch (e) { app.innerHTML = '<div class="msg err">' + esc(errText(e)) + "</div>"; return; }
+    if (!p || !p.valid) { app.innerHTML = '<div class="card center stack" style="max-width:480px;margin:10px auto"><h2>Lien indisponible</h2><p class="muted">Ce lien a expiré (24 h) ou a déjà servi. Demande un nouveau lien.</p><a class="btn btn-light" href="#/connexion">Se connecter</a></div>'; return; }
+    S.reset = { token: token, phone: p.phone };
+    app.innerHTML = '<form id="f-reset" class="card stack" style="max-width:480px;margin:10px auto" novalidate><h1>Nouveau mot de passe</h1><p class="muted" style="margin:0">Bonjour ' + esc(p.first_name) + ", choisis ton nouveau mot de passe pour le numéro <b>" + esc(showPhone(p.phone)) + "</b>.</p>" +
+      pwField("r-pass", "Nouveau mot de passe", "new-password") + pwField("r-pass2", "Confirme", "new-password") +
+      '<div id="r-msg"></div><button class="btn btn-gold btn-block" type="submit">Enregistrer</button></form>';
+  }
+
+  /* ---------------- Aide ---------------- */
+  function viewHelp() {
+    function block(title, color, items) { return '<div class="card stack"><h3 style="color:' + color + '">' + title + '</h3><ol style="margin:0;padding-left:20px" class="stack">' + items.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol></div>"; }
+    app.innerHTML = '<div class="stack" style="max-width:760px;margin:0 auto"><div class="pagehead"><a class="back" href="#/" aria-label="Retour">' + ICON.back + "</a><h1>Comment ça marche</h1></div>" +
+      '<div class="grid2">' +
+      block("Je suis membre", "#0E7A5F", ["Ouvre le <b>lien personnel</b> reçu sur WhatsApp et choisis ton mot de passe.", "Paie ta cotisation sur le numéro Wave ou Orange Money du groupe.", "Dans <b>Payer</b>, envoie la capture : le trésorier la vérifie.", "Dans <b>Caisse</b>, vois ce que tu as versé et le solde du groupe."]) +
+      block("Je suis trésorier(e)", "#2F6FDB", ["Dans <b>Bureau</b>, vérifie chaque capture puis <b>Valider</b> : la caisse se met à jour pour tous.", "Pour un membre sans smartphone, ajoute sa cotisation dans <b>Caisse → Ajouter une opération</b>.", "Une erreur ? Bouton ↺ : l'annulation reste visible, rien n'est effacé."]) +
+      block("Je suis président(e) ou secrétaire", "#7A4FD1", ["Ajoute les membres (nom + numéro) dans <b>Membres</b>.", "Bouton <b>Inviter</b> : WhatsApp s'ouvre avec le lien personnel du membre.", "Publie les annonces du groupe.", "Un membre a oublié son mot de passe ? <b>Lien mot de passe</b> sur sa fiche."]) +
+      block("J'ouvre l'espace d'un groupe", "#B9801A", ["<b>Ouvrir un espace</b> : type, cotisation, numéros de paiement.", "Nomme le bureau et ajoute la liste des membres.", "<b>Lance le groupe</b> : l'essai gratuit commence, envoie les invitations.", "Avant la fin de l'essai, choisis une formule dans <b>Réglages</b>."]) +
+      "</div>" + (S.settings.support_whatsapp ? '<a class="btn btn-light" target="_blank" rel="noopener" href="https://wa.me/' + esc(String(S.settings.support_whatsapp).replace(/\D/g, "")) + '">Une question ? Assistance sur WhatsApp</a>' : "") + "</div>";
   }
 
   async function viewJoin(code) {
@@ -348,8 +480,9 @@
     return g;
   }
   function can(g, roles) { return g && roles.indexOf(g.role) >= 0; }
-  function writable(g) { return g.state === "essai" || g.state === "actif"; }
+  function writable(g) { return g.state === "essai" || g.state === "actif" || g.state === "preparation"; }
   function stateBanner(g) {
+    if (g.state === "preparation") return '<div class="msg info">Groupe <b>en préparation</b> : les membres ne le voient pas encore. <a href="#/g/' + g.id + '/lancement">Terminer et lancer</a></div>';
     if (g.state === "essai") {
       var d = daysLeft(g.trial_ends_at);
       return '<div class="msg info">Essai gratuit : encore <b>' + Math.max(d, 0) + " jour" + (d > 1 ? "s" : "") + "</b>." + (can(g, ["proprietaire", "president", "tresorier"]) ? ' <a href="#/g/' + g.id + '/reglages">Choisir une formule</a>' : "") + "</div>";
@@ -375,8 +508,10 @@
     if (!g) { setBottom(null); app.innerHTML = '<div class="card center stack"><h2>Groupe introuvable</h2><p class="muted">Tu n\'es pas (ou plus) membre de ce groupe.</p><a class="btn btn-light" href="#/">Mes groupes</a></div>'; return; }
     g._t = g._t || Date.now();
     S.g = g;
+    if (g.state === "preparation" && (sub === "accueil" || sub === "payer" || sub === "annonces" || sub === "bureau")) sub = "lancement";
+    if (g.state !== "preparation" && sub === "lancement") sub = "accueil";
     setBottom(gid, sub, g);
-    var views = { accueil: gHome, payer: gPay, caisse: gLedger, membres: gMembers, annonces: gNews, bureau: gBureau, reglages: gSettings };
+    var views = { lancement: gLaunch, accueil: gHome, payer: gPay, caisse: gLedger, membres: gMembers, annonces: gNews, bureau: gBureau, reglages: gSettings };
     try { await (views[sub] || gHome)(g); }
     catch (e) { app.innerHTML = head(g, "Erreur") + '<div class="msg err">' + esc(errText(e)) + "</div>"; }
   }
@@ -401,9 +536,8 @@
       (writable(g) ? '<a class="btn btn-gold btn-block" href="#/g/' + g.id + '/payer">J\'ai payé : envoyer la capture</a>' : "") + "</div>" +
       '<div class="card stack"><div class="row" style="justify-content:space-between"><h3>Annonces</h3><a class="small" href="#/g/' + g.id + '/annonces">Tout voir</a></div>' +
       (news.length ? '<div class="list">' + news.map(newsItem).join("") + "</div>" : '<p class="muted" style="margin:0">Aucune annonce pour le moment.</p>') + "</div>" +
-      '<div class="card stack"><h3>Inviter des membres</h3><p class="small muted" style="margin:0">Code d\'invitation</p>' +
-      '<div style="font-family:Plus Jakarta Sans,sans-serif;font-size:1.8rem;font-weight:800;letter-spacing:.18em;color:var(--navy)">' + esc(g.invite_code) + "</div>" +
-      '<div class="row"><a class="btn btn-green btn-sm" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent("Rejoins notre groupe « " + g.name + " » sur Mbootaay : " + link) + '">' + ICON.share + ' WhatsApp</a><button class="btn btn-light btn-sm" data-act="copy" data-text="' + esc(link) + '">Copier le lien</button></div></div>' +
+      (can(g, ["proprietaire", "president", "secretaire"]) ? '<div class="card stack"><h3>Inviter des membres</h3><p class="small muted" style="margin:0">Ajoute chaque membre avec son numéro, puis envoie-lui son lien personnel sur WhatsApp.</p><a class="btn btn-green" href="#/g/' + g.id + '/membres">' + ICON.people + " Gérer les membres</a>" +
+        (g.join_code_enabled ? '<p class="small muted" style="margin:0">Code du groupe : <b style="letter-spacing:.12em">' + esc(g.invite_code) + '</b> · <button class="link" data-act="copy" data-text="' + esc(link) + '">copier le lien</button></p>' : "") + "</div>" : "") +
       '<div class="card stack"><h3>Raccourcis</h3><div class="list">' +
       '<a class="item" href="#/g/' + g.id + '/caisse" style="text-decoration:none;color:inherit"><div class="grow"><b>Historique de la caisse</b><span class="small muted">Toutes les entrées et sorties</span></div></a>' +
       '<a class="item" href="#/g/' + g.id + '/membres" style="text-decoration:none;color:inherit"><div class="grow"><b>Membres et bureau</b><span class="small muted">Qui fait quoi</span></div></a>' +
@@ -477,23 +611,23 @@
   async function gLedger(g) {
     var rows = await q(sb.from("ledger_entries").select("*").eq("group_id", g.id).order("created_at", { ascending: false }).limit(300));
     var members = await rpc("group_members", { p_group: g.id });
-    var names = {}; members.forEach(function (m) { names[m.user_id] = m.first_name + " " + m.last_name; });
+    var names = {}; members.forEach(function (m) { names[m.member_id] = m.first_name + " " + m.last_name + (m.linked ? "" : " ·  sans appli"); });
     var reversed = {}; rows.forEach(function (r) { if (r.reverses) reversed[r.reverses] = true; });
     var tres = can(g, ["proprietaire", "tresorier"]) && writable(g);
     var totIn = 0, totOut = 0;
     rows.forEach(function (r) { if (r.sign > 0) totIn += Number(r.amount); else totOut += Number(r.amount); });
     var mineOnly = sessionStorage.getItem("mb_ledger_mine") === "1";
-    var shown = mineOnly ? rows.filter(function (r) { return r.member_id === S.me.id; }) : rows;
+    var shown = mineOnly ? rows.filter(function (r) { return r.member_id && r.member_id === g.sit.member_id; }) : rows;
     var list = shown.map(function (r) {
       var cancelled = reversed[r.id];
-      return '<div class="item"><div class="grow' + (cancelled ? " struck" : "") + '"><b>' + esc(r.label) + '</b><span class="small muted">' + esc(KINDS[r.kind] || r.kind) + (r.member_id ? " · " + esc(names[r.member_id] || "Ancien membre") : "") + (r.period ? " · " + esc(periodLabel(r.period)) : "") + " · " + dtt(r.created_at) + (cancelled ? " · annulée" : "") + "</span></div>" +
+      return '<div class="item"><div class="grow' + (cancelled ? " struck" : "") + '"><b>' + esc(r.label) + '</b><span class="small muted">' + esc(KINDS[r.kind] || r.kind) + (r.member_id ? " · " + esc(names[r.member_id] || "Ancien membre").replace(" ·  sans appli", "") : "") + (r.period ? " · " + esc(periodLabel(r.period)) : "") + " · " + dtt(r.created_at) + (cancelled ? " · annulée" : "") + "</span></div>" +
         '<span class="' + (r.sign > 0 ? "amt-p" : "amt-m") + '">' + (r.sign > 0 ? "+" : "−") + fcfa(r.amount) + "</span>" +
         (r.proof_path ? '<button class="btn btn-light btn-sm" data-act="file" data-path="' + esc(r.proof_path) + '" aria-label="Voir le justificatif">📎</button>' : "") +
         (tres && !cancelled && r.kind !== "annulation" ? '<button class="btn btn-light btn-sm" data-act="reverse" data-id="' + esc(r.id) + '" aria-label="Annuler cette opération">↺</button>' : "") +
         "</div>";
     }).join("");
-    var memberOpts = '<option value="">— Aucun —</option>' + members.filter(function (m) { return m.status === "actif"; }).map(function (m) { return '<option value="' + esc(m.user_id) + '">' + esc(m.first_name + " " + m.last_name) + "</option>"; }).join("");
-    app.innerHTML = '<div class="stack">' + head(g, "Caisse") +
+    var memberOpts = '<option value="">— Aucun —</option>' + members.filter(function (m) { return m.status === "actif"; }).map(function (m) { return '<option value="' + esc(m.member_id) + '">' + esc(m.first_name + " " + m.last_name) + (m.linked ? "" : " (sans appli)") + "</option>"; }).join("");
+    app.innerHTML = '<div class="stack">' + head(g, "Caisse") + (g.state === "preparation" ? stateBanner(g) : "") +
       '<section class="hero-g"><p class="lab">Solde actuel</p><p class="big">' + fcfa(totIn - totOut) + '</p><div class="tiles"><div class="tile"><small>Entrées</small><b>' + fcfa(totIn) + '</b></div><div class="tile"><small>Sorties</small><b>' + fcfa(totOut) + "</b></div></div></section>" +
       (tres ? '<details class="card"><summary style="cursor:pointer;font-weight:800">' + ICON.plus + ' Ajouter une opération</summary><form id="f-ledger" class="stack" style="margin-top:14px" novalidate>' +
         '<div class="grid2" style="gap:12px"><div class="field"><label for="le-kind">Type</label><select id="le-kind">' + ["cotisation", "entree", "sortie", "tour", "aide", "solde_initial"].map(function (k) { return '<option value="' + k + '">' + esc(KINDS[k]) + "</option>"; }).join("") + "</select></div>" +
@@ -509,31 +643,83 @@
       (list ? '<div class="list">' + list + "</div>" : '<p class="muted" style="margin:0">Aucune opération.</p>') + "</div></div>";
   }
 
+  function addMembersForm(g) {
+    return '<details class="card"' + (g.state === "preparation" ? " open" : "") + '><summary style="cursor:pointer;font-weight:800">' + ICON.plus + ' Ajouter des membres</summary><div class="stack" style="margin-top:14px">' +
+      '<form id="f-add1" class="stack" novalidate><div class="grid2" style="gap:12px"><div class="field"><label for="a-first">Prénom</label><input id="a-first" type="text" maxlength="60"></div>' +
+      '<div class="field"><label for="a-last">Nom</label><input id="a-last" type="text" maxlength="60"></div></div>' +
+      '<div class="field"><label for="a-phone">Numéro (facultatif)</label><input id="a-phone" type="tel" inputmode="numeric" placeholder="77 123 45 67"><small>Sans numéro, le membre est suivi dans la caisse mais ne peut pas recevoir d\'invitation.</small></div>' +
+      '<div id="a-msg"></div><button class="btn btn-green" type="submit">Ajouter ce membre</button></form>' +
+      '<form id="f-addlist" class="stack" novalidate style="border-top:1px solid var(--line);padding-top:14px"><div class="field"><label for="a-list">Ou colle une liste (un membre par ligne)</label>' +
+      '<textarea id="a-list" placeholder="Awa Diop 77 123 45 67&#10;Fatou Ndiaye 78 765 43 21&#10;Mame Seck"></textarea><small>Prénom, nom, puis le numéro s\'il y en a un.</small></div>' +
+      '<div id="al-msg"></div><button class="btn btn-light" type="submit">Vérifier la liste</button></form></div></details>';
+  }
+  var INV = { relie: ["b-ok", "Compte relié"], envoyee: ["b-warn", "Invitation envoyée"], expiree: ["b-bad", "Lien expiré"], aucune: ["b-grey", "Pas encore invité"] };
+  function memberRow(g, m, opts) {
+    var me = m.user_id === S.me.id;
+    var isOwner = g.role === "proprietaire";
+    var tools = "";
+    var chip = "";
+    if (opts.bureau && m.status === "actif") {
+      var st = m.linked ? "relie" : (m.phone ? m.invite_status : null);
+      chip = st ? '<span class="badge ' + INV[st][0] + '">' + INV[st][1] + "</span>" : '<span class="badge b-grey">Sans téléphone</span>';
+    }
+    if (m.status === "en_attente") {
+      if (opts.reviewer) tools = '<button class="btn btn-green btn-sm" data-act="member" data-member="' + esc(m.member_id) + '" data-d="accepter">Accepter</button><button class="btn btn-bad btn-sm" data-act="member" data-member="' + esc(m.member_id) + '" data-d="refuser">Refuser</button>';
+    } else {
+      if (opts.inviter && !m.linked && m.phone && g.state !== "preparation") tools += '<button class="btn btn-green btn-sm" data-act="invite" data-member="' + esc(m.member_id) + '">' + (m.invite_status === "aucune" ? "Inviter" : "Renvoyer") + "</button>";
+      if (opts.inviter && !m.linked) tools += '<button class="btn btn-light btn-sm" data-act="edit-member" data-member="' + esc(m.member_id) + '" data-first="' + esc(m.first_name) + '" data-last="' + esc(m.last_name) + '" data-phone="' + esc(m.phone ? digits(m.phone) : "") + '">Modifier</button>';
+      if (opts.resetter && m.linked && !me && m.role === "membre") tools += '<button class="btn btn-light btn-sm" data-act="reset-link" data-member="' + esc(m.member_id) + '" data-name="' + esc(m.first_name) + '" data-phone="' + esc(m.phone ? digits(m.phone) : "") + '">Lien mot de passe</button>';
+      if (isOwner && !me && writable(g)) tools += '<select data-act="role" data-member="' + esc(m.member_id) + '" aria-label="Rôle" style="width:auto;min-height:42px">' + Object.keys(ROLES).map(function (k) { return '<option value="' + k + '"' + (k === m.role ? " selected" : "") + ">" + esc(ROLES[k]) + "</option>"; }).join("") + "</select>";
+      if (opts.reviewer && !me && m.role !== "proprietaire" && (m.role === "membre" || isOwner)) tools += '<button class="btn btn-bad btn-sm" data-act="member" data-member="' + esc(m.member_id) + '" data-d="retirer">Retirer</button>';
+    }
+    var phone = m.phone ? (opts.bureau ? esc(showPhone(m.phone)) : '<a href="tel:' + esc(m.phone) + '">' + esc(showPhone(m.phone)) + "</a>") : (opts.bureau ? "pas de numéro" : "téléphone masqué");
+    var sub = m.status === "en_attente" ? "demande du " + dt(m.requested_at) + " (code du groupe)" : esc(ROLES[m.role]) + " · " + phone;
+    return '<div class="item wrapitem"><div class="avatar" style="' + (m.linked ? "" : "background:#B8C7C0") + '">' + esc(initials(m.first_name, m.last_name)) + '</div><div class="grow"><b>' + esc(m.first_name + " " + m.last_name) + (me ? " (moi)" : "") + '</b><span class="small muted">' + sub + "</span>" + (chip ? '<div style="margin-top:4px">' + chip + (m.invite_status === "envoyee" && !m.linked ? ' <span class="small muted">jusqu\'au ' + dt(m.invite_expires) + "</span>" : "") + "</div>" : "") + "</div>" + tools + "</div>";
+  }
   async function gMembers(g) {
     var rows = await rpc("group_members", { p_group: g.id });
     var act = rows.filter(function (m) { return m.status === "actif"; });
     var wait = rows.filter(function (m) { return m.status === "en_attente"; });
-    var reviewer = can(g, ["proprietaire", "president", "secretaire"]) && writable(g);
-    var isOwner = g.role === "proprietaire";
-    var waitHtml = wait.map(function (m) {
-      return '<div class="item wrapitem"><div class="avatar" style="background:var(--gold);color:var(--navy)">' + esc(initials(m.first_name, m.last_name)) + '</div><div class="grow"><b>' + esc(m.first_name + " " + m.last_name) + '</b><span class="small muted">' + esc(showPhone(m.phone)) + " · demande du " + dt(m.requested_at) + "</span></div>" +
-        (reviewer ? '<button class="btn btn-green btn-sm" data-act="member" data-user="' + esc(m.user_id) + '" data-d="accepter">Accepter</button><button class="btn btn-bad btn-sm" data-act="member" data-user="' + esc(m.user_id) + '" data-d="refuser">Refuser</button>' : "") + "</div>";
-    }).join("");
-    var actHtml = act.map(function (m) {
-      var me = m.user_id === S.me.id;
-      var tools = "";
-      if (isOwner && !me && writable(g)) {
-        tools += '<select data-act="role" data-user="' + esc(m.user_id) + '" aria-label="Rôle" style="width:auto;min-height:42px">' + Object.keys(ROLES).map(function (k) { return '<option value="' + k + '"' + (k === m.role ? " selected" : "") + ">" + esc(ROLES[k]) + "</option>"; }).join("") + "</select>";
-      }
-      if (reviewer && !me && m.role !== "proprietaire" && (m.role === "membre" || isOwner)) tools += '<button class="btn btn-bad btn-sm" data-act="member" data-user="' + esc(m.user_id) + '" data-d="retirer" aria-label="Retirer">Retirer</button>';
-      var phone = m.phone ? '<a href="tel:' + esc(m.phone) + '">' + esc(showPhone(m.phone)) + "</a>" : "téléphone masqué";
-      return '<div class="item wrapitem"><div class="avatar">' + esc(initials(m.first_name, m.last_name)) + '</div><div class="grow"><b>' + esc(m.first_name + " " + m.last_name) + (me ? " (moi)" : "") + '</b><span class="small muted">' + esc(ROLES[m.role]) + " · " + phone + "</span></div>" + tools + "</div>";
-    }).join("");
-    app.innerHTML = '<div class="stack">' + head(g, "Membres") +
-      (wait.length ? '<div class="card stack"><h3>Demandes à traiter (' + wait.length + ')</h3><div class="list">' + waitHtml + "</div></div>" : "") +
-      '<div class="card stack"><h3>' + act.length + " membre" + (act.length > 1 ? "s" : "") + " actif" + (act.length > 1 ? "s" : "") + '</h3><div class="list">' + actHtml + "</div></div>" +
-      (g.role !== "proprietaire" ? '<button class="btn btn-bad" data-act="leave">Quitter ce groupe</button>' : '<p class="small muted">Pour quitter le groupe, donne d\'abord le rôle « Propriétaire » à un autre membre.</p>') +
+    var bureau = can(g, ["proprietaire", "president", "tresorier", "secretaire"]);
+    var opts = { bureau: bureau, reviewer: can(g, ["proprietaire", "president", "secretaire"]) && writable(g), inviter: can(g, ["proprietaire", "president", "secretaire"]) && writable(g), resetter: can(g, ["proprietaire", "president"]) };
+    var notInvited = act.filter(function (m) { return !m.linked && m.phone && m.invite_status !== "envoyee"; }).length;
+    var linked = act.filter(function (m) { return m.linked; }).length;
+    app.innerHTML = '<div class="stack">' + head(g, "Membres") + (g.state === "preparation" ? stateBanner(g) : "") +
+      (bureau ? '<div class="kpis"><div class="kpi k1"><small>Membres</small><b>' + act.length + '</b></div><div class="kpi k2"><small>Comptes reliés</small><b>' + linked + '</b></div><div class="kpi k3"><small>À inviter</small><b>' + notInvited + "</b></div></div>" : "") +
+      (opts.inviter && notInvited && g.state !== "preparation" ? '<button class="btn btn-gold" data-act="invite-all">Envoyer les invitations (' + notInvited + ")</button>" : "") +
+      (opts.inviter ? addMembersForm(g) : "") +
+      (wait.length ? '<div class="card stack"><h3>Demandes par code (' + wait.length + ')</h3><div class="list">' + wait.map(function (m) { return memberRow(g, m, opts); }).join("") + "</div></div>" : "") +
+      '<div class="card stack"><h3>' + act.length + " membre" + (act.length > 1 ? "s" : "") + '</h3><div class="list">' + act.map(function (m) { return memberRow(g, m, opts); }).join("") + "</div></div>" +
+      (g.role !== "proprietaire" ? '<button class="btn btn-bad" data-act="leave">Quitter ce groupe</button>' : '<p class="small muted">Pour quitter le groupe, donne d\'abord le rôle « Propriétaire » à un membre qui a relié son compte.</p>') +
       "</div>";
+  }
+
+  /* Préparation : bureau, membres, récapitulatif, lancement */
+  async function gLaunch(g) {
+    var rows = await rpc("group_members", { p_group: g.id });
+    var act = rows.filter(function (m) { return m.status === "actif"; });
+    var hasTres = act.some(function (m) { return m.role === "tresorier" || m.role === "proprietaire"; });
+    var isOwner = g.role === "proprietaire";
+    var trial = Number(S.settings.trial_days || 15);
+    var others = act.filter(function (m) { return m.user_id !== S.me.id; });
+    var bureauRows = others.length ? others.map(function (m) {
+      return '<div class="item wrapitem"><div class="avatar">' + esc(initials(m.first_name, m.last_name)) + '</div><div class="grow"><b>' + esc(m.first_name + " " + m.last_name) + '</b><span class="small muted">' + esc(m.phone ? showPhone(m.phone) : "pas de numéro") + "</span></div>" +
+        (isOwner ? '<select data-act="role" data-member="' + esc(m.member_id) + '" aria-label="Rôle" style="width:auto;min-height:42px">' + ["membre", "president", "tresorier", "secretaire"].map(function (k) { return '<option value="' + k + '"' + (k === m.role ? " selected" : "") + ">" + esc(ROLES[k]) + "</option>"; }).join("") + "</select>" : '<span class="badge b-grey">' + esc(ROLES[m.role]) + "</span>") + "</div>";
+    }).join("") : '<p class="muted" style="margin:0">Ajoute d\'abord les membres ci-dessous, puis donne-leur un rôle ici.</p>';
+    var ok1 = true, ok2 = others.length > 0;
+    app.innerHTML = '<div class="stack" style="max-width:760px;margin:0 auto">' + head(g, "Préparer le groupe") + steps(others.length ? 5 : 4) +
+      '<div class="card stack"><div class="row" style="justify-content:space-between"><h3>1 à 3 · Le groupe</h3><a class="small" href="#/g/' + g.id + '/reglages">Modifier</a></div>' +
+      '<p style="margin:0"><b>' + esc(typeOf(g.type).label) + "</b> · cotisation " + (g.contribution_amount ? fcfa(g.contribution_amount) + " " + esc(PERIODS[g.contribution_period] || "") : "libre") + "<br>" +
+      "Wave : <b>" + esc(g.wave_number ? showPhone(g.wave_number) : "—") + "</b> · Orange Money : <b>" + esc(g.om_number ? showPhone(g.om_number) : "—") + "</b></p></div>" +
+      '<div class="card stack"><h3>4 · Le bureau</h3><p class="small muted" style="margin:0">Tu es <b>propriétaire</b>. Choisis qui est président(e), trésorier(e) et secrétaire. Leurs droits s\'activeront dès qu\'ils auront relié leur compte.</p><div class="list">' + bureauRows + "</div></div>" +
+      '<div class="stack"><h3>5 · Les membres (' + act.length + ")</h3>" + (can(g, ["proprietaire", "president", "secretaire"]) ? addMembersForm(g) : "") +
+      (others.length ? '<div class="card"><div class="list">' + others.map(function (m) { return '<div class="item"><div class="grow"><b>' + esc(m.first_name + " " + m.last_name) + '</b><span class="small muted">' + esc(m.phone ? showPhone(m.phone) : "sans téléphone : suivi dans la caisse uniquement") + "</span></div></div>"; }).join("") + "</div></div>" : "") + "</div>" +
+      '<div class="card stack" style="border:2px solid var(--gold)"><h3>Récapitulatif</h3><div class="list">' +
+      '<div class="item"><div class="grow"><b>Informations du groupe</b></div><span class="badge b-ok">Prêt</span></div>' +
+      '<div class="item"><div class="grow"><b>Trésorier désigné</b><span class="small muted">' + (hasTres ? "Les paiements pourront être validés." : "Sinon, c'est toi qui valides les paiements.") + "</span></div>" + (act.some(function (m) { return m.role === "tresorier"; }) ? '<span class="badge b-ok">Oui</span>' : '<span class="badge b-warn">Pas encore</span>') + "</div>" +
+      '<div class="item"><div class="grow"><b>Membres inscrits</b></div>' + (ok2 ? '<span class="badge b-ok">' + act.length + "</span>" : '<span class="badge b-bad">Au moins 1 autre</span>') + "</div></div>" +
+      (isOwner ? '<p class="small muted" style="margin:0">En lançant le groupe, les <b>' + trial + " jours d'essai gratuit</b> commencent et tu pourras envoyer les invitations personnelles.</p>" +
+        '<div id="l-msg"></div><button class="btn btn-gold btn-block" data-act="launch"' + (ok1 && ok2 ? "" : " disabled") + ">🚀 Lancer le groupe</button>" : '<p class="small muted">Seul le propriétaire peut lancer le groupe.</p>') + "</div></div>";
   }
 
   async function gNews(g) {
@@ -554,7 +740,7 @@
       var names = {}; members.forEach(function (m) { names[m.user_id] = m.first_name + " " + m.last_name; });
       var ph = proofs.map(function (p) {
         return '<div class="item wrapitem"><div class="grow"><b>' + esc(names[p.user_id] || "Membre") + " · " + fcfa(p.amount) + '</b><span class="small muted">' + esc(METHODS[p.method]) + (p.period ? " · " + esc(periodLabel(p.period)) : "") + " · " + dtt(p.created_at) + "</span></div>" + (p.proof_path ? '<button class="btn btn-light btn-sm" data-act="file" data-path="' + esc(p.proof_path) + '">Voir la capture</button>' : '<span class="badge b-grey">Sans capture</span>') +
-          (writable(g) ? '<button class="btn btn-green btn-sm" data-act="proof" data-id="' + esc(p.id) + '" data-d="valider">Valider</button><button class="btn btn-bad btn-sm" data-act="proof" data-id="' + esc(p.id) + '" data-d="refuser">Refuser</button>' : "") + "</div>";
+          (p.user_id === S.me.id ? '<span class="small muted">Ton paiement : un autre membre du bureau le valide</span>' : writable(g) ? '<button class="btn btn-green btn-sm" data-act="proof" data-id="' + esc(p.id) + '" data-d="valider">Valider</button><button class="btn btn-bad btn-sm" data-act="proof" data-id="' + esc(p.id) + '" data-d="refuser">Refuser</button>' : "") + "</div>";
       }).join("");
       parts.push('<div class="card stack"><h3>Paiements à vérifier (' + proofs.length + ")</h3>" + (ph ? '<p class="small muted" style="margin:0">Vérifie la capture et que l\'argent est bien arrivé sur le compte du groupe avant de valider.</p><div class="list">' + ph + "</div>" : '<p class="muted" style="margin:0">Aucun paiement en attente. 👍</p>') + "</div>");
     }
@@ -570,7 +756,9 @@
     membre_parti: "Membre parti", role_change: "Rôle modifié", groupe_modifie: "Réglages modifiés", numero_paiement_change: "Numéro de paiement changé", preuve_envoyee: "Capture envoyée",
     preuve_valider: "Paiement validé", preuve_refuser: "Paiement refusé", caisse_annulation: "Opération annulée", annonce_publiee: "Annonce publiée", abonnement_envoye: "Abonnement envoyé",
     abonnement_valider: "Abonnement validé", abonnement_offrir: "Abonnement offert", abonnement_refuser: "Abonnement refusé", groupe_suspendu: "Groupe suspendu", groupe_reactive: "Groupe réactivé",
-    tarif_modifie: "Tarif modifié", reglage_modifie: "Réglage modifié"
+    tarif_modifie: "Tarif modifié", reglage_modifie: "Réglage modifié", membres_ajoutes: "Membres ajoutés", fiche_modifiee: "Fiche membre corrigée",
+    groupe_lance: "Groupe lancé", invitation_creee: "Invitation envoyée", invitation_acceptee: "Invitation acceptée", code_active: "Code du groupe activé",
+    code_desactive: "Code du groupe désactivé", code_renouvele: "Nouveau code du groupe", reinitialisation_creee: "Lien mot de passe créé", mot_de_passe_reinitialise: "Mot de passe changé"
   };
   function actionLabel(a) { if (ACTIONS[a]) return ACTIONS[a]; if (/^caisse_/.test(a)) return "Caisse : " + (KINDS[a.slice(7)] || a.slice(7)); return a; }
   function detailText(d) {
@@ -578,6 +766,8 @@
     var out = [];
     if (d.montant) out.push(fcfa(d.montant));
     if (d.libelle) out.push(d.libelle);
+    if (d.nom) out.push(d.nom);
+    if (d.nombre) out.push(d.nombre + " membre(s)");
     if (d.role) out.push(ROLES[d.role] || d.role);
     if (d.raison) out.push("raison : " + d.raison);
     if (d.formule) out.push("formule " + d.formule);
@@ -603,7 +793,7 @@
     }).join("");
     app.innerHTML = '<div class="stack" style="max-width:760px;margin:0 auto">' + head(g, "Réglages") + stateBanner(g) +
       '<div class="card stack"><div class="row" style="justify-content:space-between"><h3>Abonnement du groupe</h3>' + stateBadge(g.state) + '</div><p style="margin:0">' + statusInfo + "</p>" +
-      (g.state === "suspendu" ? "" : pendingSub ? '<div class="msg info">Ton paiement est en cours de vérification par Mbootaay.</div>' :
+      (g.state === "suspendu" || g.state === "preparation" ? (g.state === "preparation" ? '<p class="small muted" style="margin:0">L\'essai gratuit commencera au lancement du groupe.</p>' : "") : pendingSub ? '<div class="msg info">Ton paiement est en cours de vérification par Mbootaay.</div>' :
         '<form id="f-sub" class="stack" novalidate><input type="hidden" id="sb-plan" value="' + esc(firstPlan) + '"><input type="hidden" id="sb-months" value="12">' +
         '<div class="field"><label>Formule</label><div class="choice" data-group="plan">' + planChoices + "</div></div>" +
         '<div class="field"><label>Durée</label><div class="choice" data-group="months"><button type="button" data-act="pick" data-name="months" data-val="1">1 mois</button><button type="button" data-act="pick" data-name="months" data-val="12" class="on">1 an (2 mois offerts)</button></div></div>' +
@@ -612,6 +802,10 @@
         '<div class="field"><label>Capture du paiement</label><label class="drop" id="sb-drop" for="sb-file">' + ICON.camera + '<b>Ajouter la capture</b></label><input id="sb-file" class="sr" type="file" accept="image/*,application/pdf"></div>' +
         '<div id="sb-msg"></div><button class="btn btn-gold btn-block" type="submit">Envoyer le paiement</button></form>') +
       (subHist ? '<h3>Historique</h3><div class="list">' + subHist + "</div>" : "") + "</div>" +
+      (can(g, ["proprietaire", "president"]) && g.state !== "preparation" ? '<div class="card stack"><h3>Code du groupe</h3><p class="small muted" style="margin:0">Le plus sûr : inviter chaque membre avec son lien personnel. Le code permet à quelqu\'un de <b>demander</b> à entrer ; le bureau doit accepter.</p>' +
+        '<div class="row" style="justify-content:space-between"><span>' + (g.join_code_enabled ? 'Code actif : <b style="letter-spacing:.14em">' + esc(g.invite_code) + "</b>" : "Code désactivé") + '</span><div class="row">' +
+        '<button class="btn btn-sm ' + (g.join_code_enabled ? "btn-light" : "btn-green") + '" data-act="code" data-on="' + (g.join_code_enabled ? "0" : "1") + '">' + (g.join_code_enabled ? "Désactiver" : "Activer") + "</button>" +
+        (g.join_code_enabled ? '<button class="btn btn-sm btn-light" data-act="code" data-on="1" data-new="1">Nouveau code</button>' : "") + "</div></div></div>" : "") +
       '<form id="f-gset" class="card stack" novalidate><h3>Informations du groupe</h3>' +
       (editor ? "" : '<p class="small muted" style="margin:0">Seuls le propriétaire et le président peuvent modifier ces informations.</p>') +
       '<fieldset style="border:0;padding:0;margin:0" class="stack"' + (editor ? "" : " disabled") + ">" +
@@ -647,7 +841,7 @@
   /* ---------------- Console du propriétaire ---------------- */
   async function viewConsole(tab) {
     loading();
-    var tabs = [["tableau", "Tableau de bord"], ["abonnements", "Abonnements"], ["groupes", "Groupes"], ["tarifs", "Tarifs"], ["reglages", "Réglages"], ["journal", "Journal"]];
+    var tabs = [["tableau", "Tableau de bord"], ["abonnements", "Abonnements"], ["groupes", "Groupes"], ["tarifs", "Tarifs"], ["assistance", "Assistance"], ["reglages", "Réglages"], ["journal", "Journal"]];
     var d;
     try { d = await rpc("owner_dashboard"); } catch (e) { app.innerHTML = '<div class="msg err">' + esc(errText(e)) + "</div>"; return; }
     var nav = '<div class="tabs">' + tabs.map(function (t) {
@@ -661,6 +855,7 @@
       else if (tab === "tarifs") body = await cPlans();
       else if (tab === "reglages") body = cSettings();
       else if (tab === "journal") body = await cJournal();
+      else if (tab === "assistance") body = cAssist();
       else body = cDash(d);
     } catch (e) { body = '<div class="msg err">' + esc(errText(e)) + "</div>"; }
     app.innerHTML = '<div class="stack"><div><p class="muted" style="margin:0">Console du propriétaire</p><h1>Mbootaay</h1></div>' + nav + body + "</div>";
@@ -672,8 +867,10 @@
       '<div class="grid2"><div class="card stack"><h3>À traiter</h3><div class="list">' +
       '<a class="item" href="#/console/abonnements" style="text-decoration:none;color:inherit"><div class="grow"><b>Abonnements à vérifier</b></div><span class="badge ' + (d.pending_subscriptions ? "b-bad" : "b-ok") + '">' + esc(d.pending_subscriptions) + "</span></a>" +
       '<a class="item" href="#/console/groupes" style="text-decoration:none;color:inherit"><div class="grow"><b>Essais qui finissent sous 7 jours</b></div><span class="badge b-warn">' + esc(d.trials_ending_7d) + "</span></a>" +
-      '<a class="item" href="#/console/groupes" style="text-decoration:none;color:inherit"><div class="grow"><b>Groupes en lecture seule</b></div><span class="badge b-grey">' + esc(st.lecture_seule || 0) + "</span></a></div></div>" +
-      '<div class="card stack"><h3>Groupes par état</h3><div class="list">' + ["essai", "actif", "lecture_seule", "suspendu"].map(function (k) { return '<div class="item"><div class="grow">' + stateBadge(k) + "</div><b>" + esc(st[k] || 0) + "</b></div>"; }).join("") + "</div>" +
+      '<a class="item" href="#/console/groupes" style="text-decoration:none;color:inherit"><div class="grow"><b>Groupes en lecture seule</b></div><span class="badge b-grey">' + esc(st.lecture_seule || 0) + "</span></a>" +
+      '<a class="item" href="#/console/groupes" style="text-decoration:none;color:inherit"><div class="grow"><b>Groupes vides (à aider)</b></div><span class="badge ' + (d.empty_groups ? "b-warn" : "b-ok") + '">' + esc(d.empty_groups || 0) + "</span></a>" +
+      '<div class="item"><div class="grow"><b>Membres avec compte relié</b></div><b>' + esc(d.members_linked || 0) + " / " + esc(d.members) + "</b></div></div></div>" +
+      '<div class="card stack"><h3>Groupes par état</h3><div class="list">' + ["preparation", "essai", "actif", "lecture_seule", "suspendu"].map(function (k) { return '<div class="item"><div class="grow">' + stateBadge(k) + "</div><b>" + esc(st[k] || 0) + "</b></div>"; }).join("") + "</div>" +
       '<p class="small muted" style="margin:0">Revenus encaissés depuis le début : <b>' + fcfa(d.revenue_total) + "</b> (les abonnements offerts ne sont pas comptés).</p></div>" +
       '<div class="card stack"><h3>Groupes par type</h3>' + (Object.keys(ty).length ? Object.keys(ty).sort(function (a, b) { return ty[b] - ty[a]; }).map(function (k) {
         var t = typeOf(k);
@@ -700,16 +897,29 @@
       }).join("") + "</div>" : '<p class="muted" style="margin:0">Aucun.</p>') + "</div>";
   }
   async function cGroups() {
-    var rows = await q(sb.from("groups").select("id,name,type,created_at,trial_ends_at,paid_until,is_suspended,plan_id").order("created_at", { ascending: false }).limit(500));
+    var rows = await rpc("owner_groups");
     var filter = sessionStorage.getItem("mb_cg_filter") || "";
-    var list = rows.map(function (g) { g.st = gState(g); return g; }).filter(function (g) { return !filter || g.st === filter; });
-    return '<div class="card stack"><div class="row" style="justify-content:space-between"><h3>' + rows.length + ' groupes</h3><select data-act="cg-filter" style="width:auto"><option value="">Tous les états</option>' +
-      ["essai", "actif", "lecture_seule", "suspendu"].map(function (k) { return '<option value="' + k + '"' + (k === filter ? " selected" : "") + ">" + esc(STATES[k][1]) + "</option>"; }).join("") + "</select></div>" +
-      '<div class="tscroll"><table class="t"><thead><tr><th>Groupe</th><th>Type</th><th>État</th><th>Échéance</th><th></th></tr></thead><tbody>' +
+    var list = rows.filter(function (g) {
+      if (!filter) return true;
+      if (filter === "vide") return g.state !== "preparation" && Number(g.members) <= 1 && Number(g.operations) === 0;
+      return g.state === filter;
+    });
+    return '<div class="card stack"><div class="row" style="justify-content:space-between"><h3>' + rows.length + ' groupes</h3><select data-act="cg-filter" style="width:auto"><option value="">Tous</option>' +
+      ["preparation", "essai", "actif", "lecture_seule", "suspendu"].map(function (k) { return '<option value="' + k + '"' + (k === filter ? " selected" : "") + ">" + esc(STATES[k][1]) + "</option>"; }).join("") +
+      '<option value="vide"' + (filter === "vide" ? " selected" : "") + ">Groupes vides</option></select></div>" +
+      '<div class="tscroll"><table class="t"><thead><tr><th>Groupe</th><th>État</th><th>Membres</th><th>Échéance</th><th></th></tr></thead><tbody>' +
       list.map(function (g) {
-        return "<tr><td><b>" + esc(g.name) + '</b><div class="small muted">créé le ' + dt(g.created_at) + "</div></td><td>" + esc(typeOf(g.type).label) + "</td><td>" + stateBadge(g.st) + "</td><td>" + dt(g.paid_until || g.trial_ends_at) + "</td><td>" +
+        var empty = g.state !== "preparation" && Number(g.members) <= 1 && Number(g.operations) === 0;
+        return "<tr><td><b>" + esc(g.name) + '</b><div class="small muted">' + esc(typeOf(g.type).label) + " · " + esc(g.owner_name || "—") + (g.owner_phone ? " · " + esc(showPhone(g.owner_phone)) : "") + "<br>créé le " + dt(g.created_at) + "</div></td><td>" + stateBadge(g.state) + (empty ? ' <span class="badge b-bad">Vide</span>' : "") + "</td>" +
+          "<td><b>" + esc(g.members) + '</b><div class="small muted">' + esc(g.linked) + " relié(s) · " + esc(g.operations) + " op.</div></td><td>" + (g.state === "preparation" ? "—" : dt(g.paid_until || g.trial_ends_at)) + "</td><td>" +
+          (g.owner_phone ? '<a class="btn btn-sm btn-light" target="_blank" rel="noopener" href="https://wa.me/' + esc(String(g.owner_phone).replace(/\D/g, "")) + '">WhatsApp</a> ' : "") +
           '<button class="btn btn-sm ' + (g.is_suspended ? "btn-green" : "btn-bad") + '" data-act="suspend" data-id="' + esc(g.id) + '" data-s="' + (g.is_suspended ? "0" : "1") + '">' + (g.is_suspended ? "Réactiver" : "Suspendre") + "</button></td></tr>";
       }).join("") + "</tbody></table></div>" + (list.length ? "" : '<p class="muted">Aucun groupe.</p>') + "</div>";
+  }
+  function cAssist() {
+    return '<form id="f-assist" class="card stack" novalidate><h3>Mot de passe oublié</h3><p class="small muted" style="margin:0">Crée un lien personnel (valable 24 h) pour qu\'une personne choisisse un nouveau mot de passe. Toutes ses connexions en cours seront fermées.</p>' +
+      '<div class="field"><label for="as-phone">Numéro du compte</label><input id="as-phone" type="tel" inputmode="numeric" placeholder="77 123 45 67"></div>' +
+      '<div id="as-msg"></div><button class="btn btn-green" type="submit">Créer le lien</button></form>';
   }
   async function cPlans() {
     await loadPlans();
@@ -748,6 +958,37 @@
     }).join("") || '<p class="muted">Vide.</p>') + "</div></div>";
   }
 
+  /* ---------------- Fenêtres (partage, édition) ---------------- */
+  function baseUrl() { return location.origin + location.pathname; }
+  function openSheet(html) {
+    closeSheet();
+    var m = document.createElement("div");
+    m.className = "modal"; m.id = "sheet"; m.setAttribute("role", "dialog");
+    m.innerHTML = '<div class="card stack sheet">' + html + '<button class="btn btn-light" data-act="close-modal">Fermer</button></div>';
+    document.body.appendChild(m);
+  }
+  function closeSheet() { var x = document.getElementById("sheet"); if (x) x.remove(); }
+  function shareItem(it) {
+    var wa = "https://wa.me/" + (it.phone ? "221" + digits(it.phone) : "") + "?text=" + encodeURIComponent(it.text);
+    return '<div class="item wrapitem"><div class="grow"><b>' + esc(it.name) + '</b><span class="small muted">' + esc(it.phone ? showPhone(it.phone) : "") + "</span></div>" +
+      '<a class="btn btn-green btn-sm" target="_blank" rel="noopener" href="' + esc(wa) + '" data-act="sent">' + ICON.share + " WhatsApp</a>" +
+      '<button class="btn btn-light btn-sm" data-act="copy" data-text="' + esc(it.text) + '">Copier</button></div>';
+  }
+  function inviteText(g, m, tok) {
+    return "Bonjour " + m.first_name + ", tu es invité(e) dans le groupe « " + g.name + " » sur Mbootaay. Ouvre ton lien personnel (valable 7 jours, ne le transfère à personne) : " + baseUrl() + "#/invitation/" + tok;
+  }
+  function parseList(txt) {
+    var out = [], errors = [];
+    txt.split(/\r?\n/).forEach(function (line, i) {
+      var l = line.trim(); if (!l) return;
+      var m = /^(.*?)[\s,;:-]*((?:\+?221[\s.-]*)?7[0-8](?:[\s.-]*\d){7})?\s*$/.exec(l);
+      var names = (m[1] || "").replace(/[,;]+/g, " ").trim().split(/\s+/).filter(Boolean);
+      if (names.length < 2) { errors.push("Ligne " + (i + 1) + " : prénom et nom obligatoires"); return; }
+      out.push({ first_name: names[0], last_name: names.slice(1).join(" "), phone: m[2] ? digits(m[2]) : "" });
+    });
+    return { list: out, errors: errors };
+  }
+
   /* ---------------- Formulaires ---------------- */
   function msg(id, text, kind) { var b = document.getElementById(id); if (b) b.innerHTML = text ? '<div class="msg ' + (kind || "err") + '">' + esc(text) + "</div>" : ""; }
   function val(id) { var e = document.getElementById(id); return e ? e.value.trim() : ""; }
@@ -779,6 +1020,63 @@
           if (li.error) { msg("s-msg", "Compte créé. Il doit encore être activé : contacte l'assistance Mbootaay.", "info"); return; }
         }
         await loadMe(); toast("Bienvenue sur Mbootaay, " + fn + " !", "ok"); location.hash = "#/"; route();
+      } else if (f.id === "f-add1") {
+        var af = val("a-first"), al = val("a-last"), ap = val("a-phone");
+        if (!af || !al) return msg("a-msg", "Entre le prénom et le nom.");
+        if (ap && !validPhone(ap)) return msg("a-msg", "Numéro invalide : 9 chiffres commençant par 7.");
+        lockBtn(btn, true, "Ajout…");
+        await rpc("add_members", { p_group: S.g.id, p_members: [{ first_name: af, last_name: al, phone: ap ? digits(ap) : "" }] });
+        toast(af + " " + al + " ajouté(e)", "ok"); refreshGroup();
+      } else if (f.id === "f-addlist") {
+        var parsed = parseList(document.getElementById("a-list").value);
+        if (parsed.errors.length) return msg("al-msg", parsed.errors.slice(0, 3).join(" · "));
+        if (!parsed.list.length) return msg("al-msg", "La liste est vide.");
+        var bad = parsed.list.filter(function (x) { return x.phone && !validPhone(x.phone); });
+        if (bad.length) return msg("al-msg", "Numéro invalide pour " + bad[0].first_name + " " + bad[0].last_name);
+        S.pendingList = parsed.list;
+        openSheet("<h3>Vérifie la liste (" + parsed.list.length + ")</h3><div class=\"list\" style=\"max-height:50vh;overflow:auto\">" + parsed.list.map(function (x) {
+          return '<div class="item"><div class="grow"><b>' + esc(x.first_name + " " + x.last_name) + '</b><span class="small muted">' + esc(x.phone ? showPhone(x.phone) : "sans téléphone") + "</span></div></div>";
+        }).join("") + '</div><button class="btn btn-gold" data-act="add-list-confirm">Ajouter ces ' + parsed.list.length + " membres</button>");
+      } else if (f.id === "f-edit") {
+        var ep = val("e-phone");
+        if (!val("e-first") || !val("e-last")) return msg("e-msg", "Prénom et nom obligatoires.");
+        if (ep && !validPhone(ep)) return msg("e-msg", "Numéro invalide.");
+        lockBtn(btn, true);
+        await rpc("update_member_info", { p_member: f.dataset.member, p_first: val("e-first"), p_last: val("e-last"), p_phone: ep ? digits(ep) : null });
+        closeSheet(); toast("Fiche corrigée", "ok"); refreshGroup();
+      } else if (f.id === "f-inv-login") {
+        lockBtn(btn, true, "Connexion…");
+        var il = await sb.auth.signInWithPassword({ email: S.inv.p.phone + "@" + C.EMAIL_DOMAIN, password: document.getElementById("i-pass").value });
+        if (il.error) throw il.error;
+        await loadMe(); await acceptInvite();
+      } else if (f.id === "f-inv-signup") {
+        var ifn = val("i-first"), iln = val("i-last"), iph = digits(val("i-phone")), ip1 = document.getElementById("i-pass").value, ip2 = document.getElementById("i-pass2").value;
+        if (!ifn || !iln) return msg("i-msg", "Entre ton prénom et ton nom.");
+        if (!validPhone(iph)) return msg("i-msg", "Numéro invalide : 9 chiffres commençant par 7.");
+        if (ip1.length < 8) return msg("i-msg", "Le mot de passe doit contenir au moins 8 caractères.");
+        if (ip1 !== ip2) return msg("i-msg", "Les deux mots de passe ne sont pas identiques.");
+        lockBtn(btn, true, "Création…");
+        var su = await sb.auth.signUp({ email: iph + "@" + C.EMAIL_DOMAIN, password: ip1, options: { data: { first_name: ifn, last_name: iln, phone: iph } } });
+        if (su.error) throw su.error;
+        if (!su.data.session) { var sl = await sb.auth.signInWithPassword({ email: iph + "@" + C.EMAIL_DOMAIN, password: ip1 }); if (sl.error) throw sl.error; }
+        await loadMe(); await acceptInvite();
+      } else if (f.id === "f-reset") {
+        var r1 = document.getElementById("r-pass").value, r2 = document.getElementById("r-pass2").value;
+        if (r1.length < 8) return msg("r-msg", "8 caractères minimum.");
+        if (r1 !== r2) return msg("r-msg", "Les deux mots de passe ne sont pas identiques.");
+        lockBtn(btn, true);
+        await rpc("reset_password", { p_token: S.reset.token, p_password: r1 });
+        if (S.session) { await sb.auth.signOut(); S.session = null; S.me = null; S.owner = false; }
+        var rp = S.reset.phone; S.reset = null;
+        toast("Mot de passe enregistré : connecte-toi", "ok");
+        location.hash = "#/connexion";
+        setTimeout(function () { var x = document.getElementById("l-phone"); if (x) x.value = showPhone(rp); }, 300);
+      } else if (f.id === "f-assist") {
+        var aph = val("as-phone");
+        if (!validPhone(aph)) return msg("as-msg", "Numéro invalide.");
+        lockBtn(btn, true);
+        var atok = await rpc("owner_reset_link", { p_phone: digits(aph) });
+        openSheet("<h3>Lien prêt (24 h)</h3>" + shareItem({ name: "Compte " + showPhone(aph), phone: digits(aph), text: "Bonjour, voici ton lien personnel pour choisir un nouveau mot de passe Mbootaay (valable 24 h) : " + baseUrl() + "#/reinitialiser/" + atok }));
       } else if (f.id === "f-create") {
         var name = val("c-name"), amt = val("c-amount"), wave = val("c-wave");
         if (name.length < 3) return msg("c-msg", "Le nom du groupe doit contenir au moins 3 caractères.");
@@ -897,6 +1195,7 @@
         viewFile(el.dataset.path);
       } else if (a === "close-modal") {
         el.closest(".modal").remove();
+        if (S.g && S.g._t === 0) refreshGroup();
       } else if (a === "ledger-filter") {
         sessionStorage.setItem("mb_ledger_mine", el.dataset.mine); route();
       } else if (a === "reverse") {
@@ -910,7 +1209,7 @@
         var d = el.dataset.d;
         if (d === "retirer" && !confirm("Retirer ce membre du groupe ?")) return;
         el.disabled = true;
-        await rpc("review_member", { p_group: S.g.id, p_user: el.dataset.user, p_decision: d });
+        await rpc("review_member", { p_member: el.dataset.member, p_decision: d });
         toast(d === "accepter" ? "Membre accepté" : d === "refuser" ? "Demande refusée" : "Membre retiré", "ok"); refreshGroup();
       } else if (a === "leave") {
         if (!confirm("Quitter ce groupe ? Ton historique de cotisations reste dans la caisse.")) return;
@@ -935,8 +1234,70 @@
         el.disabled = true;
         await rpc("owner_set_suspended", { p_group: el.dataset.id, p_suspended: on, p_reason: why });
         toast(on ? "Groupe suspendu" : "Groupe réactivé", "ok"); route();
-      } else if (a === "reload") { location.reload(); }
-    } catch (err) { el.disabled = false; toast(errText(err), "err"); }
+      } else if (a === "reload") { location.reload();
+      } else if (a === "sent") { return;
+      } else if (a === "wiz-next" || a === "wiz-back") {
+        wizardRead();
+        if (a === "wiz-back") { W.step = Math.max(0, W.step - 1); viewCreate(); return; }
+        var werr = wizardCheck(); if (werr) { msg("w-msg", werr); return; }
+        W.step += 1; viewCreate(); window.scrollTo(0, 0);
+      } else if (a === "wiz-create") {
+        wizardRead();
+        var cerr = wizardCheck(); if (cerr) { msg("w-msg", cerr); return; }
+        lockBtn(el, true, "Création…");
+        var ngid = await rpc("create_group", { p_type: W.type, p_name: W.name, p_amount: W.amount ? Math.round(Number(W.amount)) : null, p_period: W.period, p_wave: W.wave ? digits(W.wave) : null });
+        if (W.om) await rpc("update_group", { p_group: ngid, p_name: W.name, p_amount: W.amount ? Math.round(Number(W.amount)) : null, p_period: W.period, p_wave: W.wave ? digits(W.wave) : null, p_om: digits(W.om), p_phones_visible: true });
+        W = null; S.g = null;
+        toast("Espace créé ! Ajoute maintenant le bureau et les membres.", "ok");
+        location.hash = "#/g/" + ngid + "/lancement";
+      } else if (a === "inv-accept") {
+        lockBtn(el, true); await acceptInvite();
+      } else if (a === "launch") {
+        if (!confirm("Lancer le groupe maintenant ? L'essai gratuit commence aujourd'hui.")) return;
+        lockBtn(el, true, "Lancement…");
+        await rpc("launch_group", { p_group: S.g.id });
+        toast("Groupe lancé ! Envoie maintenant les invitations.", "ok");
+        var lgid = S.g.id; S.g = null; location.hash = "#/g/" + lgid + "/membres";
+      } else if (a === "invite") {
+        lockBtn(el, true, "…");
+        var rows = await rpc("group_members", { p_group: S.g.id });
+        var mm = rows.find(function (x) { return x.member_id === el.dataset.member; });
+        var tok = await rpc("create_invitation", { p_member: el.dataset.member });
+        lockBtn(el, false);
+        openSheet("<h3>Invitation de " + esc(mm.first_name) + "</h3><p class=\"small muted\" style=\"margin:0\">Le lien est personnel et valable 7 jours. Un nouvel envoi annule l'ancien lien.</p>" + shareItem({ name: mm.first_name + " " + mm.last_name, phone: mm.phone, text: inviteText(S.g, mm, tok) }));
+        S.g._t = 0;
+      } else if (a === "invite-all") {
+        lockBtn(el, true, "Préparation des liens…");
+        var all = await rpc("group_members", { p_group: S.g.id });
+        var todo = all.filter(function (m) { return m.status === "actif" && !m.linked && m.phone && m.invite_status !== "envoyee"; });
+        var items = [];
+        for (var k = 0; k < todo.length; k++) {
+          var t2 = await rpc("create_invitation", { p_member: todo[k].member_id });
+          items.push({ name: todo[k].first_name + " " + todo[k].last_name, phone: todo[k].phone, text: inviteText(S.g, todo[k], t2) });
+        }
+        lockBtn(el, false);
+        openSheet("<h3>Envoie chaque invitation (" + items.length + ")</h3><p class=\"small muted\" style=\"margin:0\">Touche « WhatsApp » pour chaque membre : la conversation s'ouvre avec son message prêt.</p><div class=\"list\" style=\"max-height:55vh;overflow:auto\">" + items.map(shareItem).join("") + "</div>");
+        S.g._t = 0;
+      } else if (a === "edit-member") {
+        openSheet('<form id="f-edit" class="stack" data-member="' + esc(el.dataset.member) + '" novalidate><h3>Corriger la fiche</h3>' +
+          '<div class="field"><label for="e-first">Prénom</label><input id="e-first" type="text" maxlength="60" value="' + esc(el.dataset.first) + '"></div>' +
+          '<div class="field"><label for="e-last">Nom</label><input id="e-last" type="text" maxlength="60" value="' + esc(el.dataset.last) + '"></div>' +
+          '<div class="field"><label for="e-phone">Numéro</label><input id="e-phone" type="tel" inputmode="numeric" value="' + esc(el.dataset.phone ? showPhone(el.dataset.phone) : "") + '"><small>Changer le numéro annule l\'invitation en cours.</small></div>' +
+          '<div id="e-msg"></div><button class="btn btn-green" type="submit">Enregistrer</button></form>');
+      } else if (a === "reset-link") {
+        if (!confirm("Créer un lien pour que " + el.dataset.name + " choisisse un nouveau mot de passe ?")) return;
+        var rt = await rpc("create_reset_link", { p_member: el.dataset.member });
+        openSheet("<h3>Lien mot de passe (24 h)</h3><p class=\"small muted\" style=\"margin:0\">Envoie-le uniquement à " + esc(el.dataset.name) + ". Ses connexions en cours seront fermées.</p>" + shareItem({ name: el.dataset.name, phone: el.dataset.phone, text: "Bonjour " + el.dataset.name + ", voici ton lien pour choisir un nouveau mot de passe Mbootaay (valable 24 h, ne le transfère pas) : " + baseUrl() + "#/reinitialiser/" + rt }));
+      } else if (a === "code") {
+        el.disabled = true;
+        await rpc("set_join_code", { p_group: S.g.id, p_enabled: el.dataset.on === "1", p_regenerate: el.dataset.new === "1" });
+        toast(el.dataset.new === "1" ? "Nouveau code créé : l'ancien ne marche plus" : el.dataset.on === "1" ? "Code activé" : "Code désactivé", "ok"); refreshGroup();
+      } else if (a === "add-list-confirm") {
+        lockBtn(el, true, "Ajout…");
+        var n = await rpc("add_members", { p_group: S.g.id, p_members: S.pendingList });
+        S.pendingList = null; closeSheet(); toast(n + " membres ajoutés", "ok"); refreshGroup();
+      }
+    } catch (err) { lockBtn(el, false); el.disabled = false; toast(errText(err), "err"); if (a === "wiz-create") msg("w-msg", errText(err)); }
   });
 
   document.addEventListener("change", async function (e) {
@@ -958,7 +1319,7 @@
     if (el.dataset.act === "role") {
       var role = el.value;
       if (role === "proprietaire" && !confirm("Donner la propriété du groupe à ce membre ? Tu deviendras président(e).")) { refreshGroup(); return; }
-      try { await rpc("set_member_role", { p_group: S.g.id, p_user: el.dataset.user, p_role: role }); toast("Rôle mis à jour", "ok"); }
+      try { await rpc("set_member_role", { p_member: el.dataset.member, p_role: role }); toast("Rôle mis à jour", "ok"); }
       catch (err) { toast(errText(err), "err"); }
       refreshGroup();
     } else if (el.dataset.act === "cg-filter") {

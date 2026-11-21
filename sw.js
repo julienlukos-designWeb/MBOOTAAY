@@ -1,6 +1,6 @@
 /* Mbootaay — service worker : coquille hors ligne, jamais de cache pour les données */
-const CACHE = "mbootaay-v1";
-const SHELL = ["./", "index.html", "styles.css?v=1", "app.js?v=1", "config.js?v=1", "sb-secours.js?v=1", "icon.svg", "icon-192.png", "manifest.webmanifest"];
+const CACHE = "mbootaay-v2";
+const SHELL = ["./", "index.html", "styles.css?v=2", "app.js?v=2", "config.js?v=2", "sb-secours.js?v=2", "icon.svg", "icon-192.png", "manifest.webmanifest"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
